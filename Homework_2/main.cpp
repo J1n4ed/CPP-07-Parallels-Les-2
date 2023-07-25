@@ -196,15 +196,13 @@ int main(int argc, char** argv)
 			std::cout << "Average delay:\t" << calcTime << '\n';
 			std::cout << "Threads:\t" << threadNum << '\n';
 
-			std::cout << "\n |= ==================================================================================== = | \n\n";
-
 			for (auto& unit : execution_pool)
 			{
 				
 				std::cout << "--- EXEC UNIT --------------------------------------------\n";
 				std::cout << "Thread number #" << unit.get_num() << '\n';
 				std::cout << "Thread ID: " << unit.get_id() << '\n';
-				std::cout << "Thread execution time: " << unit.get_time() << '\n';
+				std::cout << "Thread execution time: " << unit.get_time() << "ms" << '\n';
 				progress_bar(unit.get_progress());
 				std::cout << "\nSTATUS: ";
 
