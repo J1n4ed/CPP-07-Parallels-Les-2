@@ -8,6 +8,125 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <random>
+#include <Windows.h>
+
+//
+
+struct execution_unit
+{
+public:
+
+	execution_unit()
+	{
+		finished = false;
+		percentDone = 0.0;
+	}
+	
+	// methods
+
+	/*
+	check if unit's thread is finished
+	*/
+	bool check()
+	{
+		return finished;
+	}
+	
+	/*
+	set completed
+	*/
+	void set_finished()
+	{
+		finished = true;
+	}
+
+	/*
+	set unit's thread id
+	*/
+	void set_id(std::thread::id id)
+	{
+		unitId = id;
+	}
+
+	/*
+	check unit's thread id
+	*/
+	bool check_id(std::thread::id id)
+	{
+		if (unitId == id)
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	/*
+	get unit id
+	*/
+	std::thread::id get_id()
+	{
+		return unitId;
+	}
+
+	/*
+	set unit index
+	*/
+	void set_num(int num)
+	{
+		unitNum = num;
+	}
+
+	/*
+	get unit index
+	*/
+	int get_num()
+	{
+		return unitNum;
+	}
+
+	/*
+	get progress
+	*/
+	float get_progress()
+	{
+		return percentDone;
+	}
+
+	/*
+	set progress
+	*/
+	void set_progress(float percent)
+	{
+		percentDone = percent;
+	}
+
+	/*
+	Set ongoing exec delta time
+	*/
+	void set_time(double Time)
+	{
+		execTime = Time;
+	}
+
+	/*
+	get stored time delta
+	*/
+	double get_time()
+	{
+		return execTime;
+	}
+
+private:
+	bool finished;
+	float percentDone;
+	std::thread::id unitId;
+	double execTime;
+	int unitNum;
+};
 
 // glob vars
 
@@ -17,8 +136,8 @@ std::atomic<bool> exitFlag = false;
 std::mutex mute;
 std::mutex barMute;
 int barFillRatio = 0;
-std::atomic<int> completed_threads = 0;
 std::condition_variable cond;
+std::vector<execution_unit> execution_pool;
 
 // defines
 
@@ -30,11 +149,7 @@ void dummy_func(int, int thread_index);
 
 void clear_screen();
 
-void manage_screen();
-
-void start_calc(int, int);
-
-void progress_bar(int, int);
+void progress_bar(float);
 
 // ---
 
@@ -42,17 +157,81 @@ using namespace std::chrono_literals;
 
 int main(int argc, char** argv)
 {
+	// VAR
+
+	bool exitFlag = false;
+
+	// BODY
+
 	clear_screen();
 
 	std::cout << "Multithread imitation.\n\n";
-	std::cout << "Set delay (in milliseconds): ";
+	std::cout << "Set average delay (in milliseconds): ";
 	std::cin >> calcTime;
 	std::cout << "Set number of threads (int): ";
-	std::cin >> threadNum;	
+	std::cin >> threadNum;		
 
-	manage_screen();
+	std::vector<std::thread> runner;
 
-	start_calc(calcTime, threadNum);		
+	for (int i = 0; i < threadNum; ++i)
+	{
+		int t = calcTime;
+		
+		t += (i * 100);
+
+		runner.push_back(std::thread(dummy_func,t , i + 1));
+	}
+
+	while (!exitFlag)
+	{
+		for (auto & unit : execution_pool) // check if all threads are done
+		{
+			exitFlag = unit.check();
+		}
+
+		if (!exitFlag) // skip to exit if exitflag is set
+		{
+			clear_screen();
+			std::cout << "Multithread imitation.\n\n";
+			std::cout << "Average delay:\t\t" << calcTime << '\n';
+			std::cout << "Threads:\t" << threadNum << '\n';
+
+			std::cout << "\n |= ==================================================================================== = | \n\n";
+
+			for (auto& unit : execution_pool)
+			{
+				
+				std::cout << "--- EXEC UNIT --------------------------------------------\n";
+				std::cout << "Thread number #" << unit.get_num() << '\n';
+				std::cout << "Thread ID: " << unit.get_id() << '\n';
+				std::cout << "Thread execution time: " << unit.get_time() << '\n';
+				progress_bar(unit.get_progress());
+				std::cout << "\nSTATUS: ";
+
+				if (unit.check())
+				{
+					std::cout << "FINISHED!";
+				}
+				else
+				{
+					std::cout << "IN PROGRESS...";
+				}
+				std::cout << '\n';
+				std::cout << "----------------------------------------------------------\n";
+				
+			}			
+			// std::cout.flush();
+		}
+
+	} // main loop
+
+	std::cout << "\nAll threads completed!\n";	
+
+	// joins	
+	for (int i = 0; i < threadNum; ++i)
+	{
+		runner[i].join();
+	}
 
 	// EXIT
 	std::cout << std::endl;
@@ -63,74 +242,64 @@ int main(int argc, char** argv)
 
 void dummy_func(int timer, int thread_index)
 {
-	std::lock_guard<std::mutex> lock(mute);
+	// PREPS
+	typedef std::chrono::duration<double, std::milli> duration;
+	// std::lock_guard<std::mutex> lock(mute);
 	barFillRatio = BAR_WIDTH / threadNum;
+	std::thread::id id = std::this_thread::get_id();
+	execution_unit thee_unit;
+	thee_unit.set_id(id);
+	thee_unit.set_num(thread_index);
+	execution_pool.push_back(thee_unit);
+	float progress = 0.0;
 
-	auto start = std::chrono::steady_clock::now();	
-	auto delay = std::chrono::milliseconds(timer);
+	// EXEC		
 
-	std::cout << "--------------\n";
+	auto start = std::chrono::steady_clock::now();
 
-	std::cout << "Thread number #" << thread_index << '\n';
-	std::cout << "Thread ID: " << std::this_thread::get_id << '\n';
+	/*
+		10 dummy 'tasks' with randomized execution time in each thread
+	*/
+	for (int i = 0; i < 10; ++i)
+	{
+		
+		auto delay = std::chrono::milliseconds(timer);
+		std::this_thread::sleep_for(delay);
+		auto end = std::chrono::steady_clock::now();
+		duration delta = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+		progress += 0.10;
+		for (auto& unit : execution_pool)
+		{
+			if (id == unit.get_id())
+			{
+				unit.set_time(delta.count());
+				unit.set_progress(progress);
+			}
+		}
+	} // end dummy
 
-	std::this_thread::sleep_for(delay);
-
-	auto end = std::chrono::steady_clock::now();
-
-	auto delta = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	
-	std::cout << "Thread execution time: " << delta.count();
-
-	int tmp = completed_threads.load();
-	tmp++;
-	completed_threads.store(tmp);
-
-	std::cout << "\n--------------\n";	
-
-	progress_bar(barFillRatio, threadNum);
+	for (auto& unit : execution_pool)
+	{
+		if (id == unit.get_id())
+		{
+			unit.set_finished();
+		}
+	}
 
 } // !dummy_func()
 
 void clear_screen()
 {
 #ifdef _WIN32
-	std::system("cls");
+std::system("cls");
 #else
-	// Assume POSIX
-	std::system("clear");
+// Assume POSIX
+std::system("clear");
 #endif
 
 } // !clear_screen()
 
-void manage_screen()
-{
-	clear_screen();
-	std::cout << "Multithread imitation.\n\n";
-	std::cout << "Delay:\t\t" << calcTime << '\n';
-	std::cout << "Threads:\t" << threadNum << '\n';
-	
-} // !manage_screen()
-
-void start_calc(int delay, int threads)
-{
-	std::vector<std::thread> runner;
-	
-	for (int i = 0; i < threads; ++i)
-	{
-		runner.push_back(std::thread(dummy_func, delay, i+1));
-	}	
-
-	// joins
-
-	for (int i = 0; i < threads; ++i)
-	{
-		runner[i].join();
-	}	
-
-} // !start_calc()
-
-void progress_bar(int ratio, int threads)
+void progress_bar(float progress)
 {
 	// vars
 
@@ -141,7 +310,7 @@ void progress_bar(int ratio, int threads)
 	std::cout << "EXECUTION PROGRESS: ";
 	std::cout << '[';
 		
-	int pos = completed_threads.load() * ratio;
+	int pos = (progress * 100) / 2;
 
 	for (int i = 0; i < barWidth; ++i)
 	{
@@ -159,13 +328,6 @@ void progress_bar(int ratio, int threads)
 		}
 	}
 		
-	if (threadNum != completed_threads.load())
-		std::cout << "] " << int( (ratio * completed_threads.load()) * 2 ) << " %\r";
-	else
-		std::cout << "] 100 %\r";
-
-	std::cout.flush();
-
-	std::cout << '\n';		
+	std::cout << "] " << pos * 2 << " %\r";	
 		
 } // !rogress_bar()
