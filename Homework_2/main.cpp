@@ -193,7 +193,7 @@ int main(int argc, char** argv)
 		{
 			clear_screen();
 			std::cout << "Multithread imitation.\n\n";
-			std::cout << "Average delay:\t\t" << calcTime << '\n';
+			std::cout << "Average delay:\t" << calcTime << '\n';
 			std::cout << "Threads:\t" << threadNum << '\n';
 
 			std::cout << "\n |= ==================================================================================== = | \n\n";
